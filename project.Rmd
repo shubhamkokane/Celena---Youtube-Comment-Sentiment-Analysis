@@ -1,0 +1,215 @@
+---
+title: "Celena - Youtube Sentiment Analysis"
+author: 'Rajesh Bhatt (net id: rmb317) Rutu Desai (net id:rmd228) Shubham Kokane (netid:ssk203)'
+date: "04/25/2022"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing the necessary libraries:
+```{r library, echo=FALSE}
+library("tidyverse")
+library("rvest")
+library("tuber")
+library("tidytext")
+library("dplyr")
+library("textdata")
+library("ggplot2")
+library("tm")
+library("topicmodels")
+library("wordcloud")
+library("wordcloud2")
+library("RColorBrewer")
+```
+
+## Authenticating yotube analytics:
+```{r youtube_analytics}
+yt_oauth("192603887469-rasooci3vu64kfroe901cnsmnp0lghhe.apps.googleusercontent.com", "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", token = "")
+```
+
+## Getting comments for a specific video based on Video ID:
+```{r video_comment}
+res2 = get_comment_threads(c(video_id="EGcXF0iG-2s"), max_results = 101)
+head(res2, 1)
+```
+
+## Creating df for only the Comments:
+```{r df_comment}
+df = res2 %>% select(videoId, authorDisplayName, textDisplay)
+head(df)
+summary(df)
+glimpse(df)
+df2 = res2 %>% select(textDisplay)
+head(df2)
+```
+
+## Tidying the comment section:
+```{r tidy_comment}
+df = df %>%
+  mutate(comment_number = row_number())
+head(df)
+
+text_df = df %>%
+  unnest_tokens(word, textDisplay)
+head(text_df,15)
+```
+
+## Word Cloud before Cleaning:
+```{r word_cloud}
+text_df_word_cloud_count <- text_df %>%
+  group_by(word) %>% arrange(word) %>% select(c(3))
+unique(text_df_word_cloud_count)
+
+text_df_word_freq <- text_df_word_cloud_count %>% 
+  dplyr::summarise(Freq = n())
+text_df_word_freq %>% arrange(-Freq)
+
+text_df_word_clud <- wordcloud(words = text_df_word_freq$word, freq = text_df_word_freq$Freq, min.freq = 1, max.words=200, 
+                               random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+```
+
+## Removing Stop Words:
+```{r stop_words}
+tidy_comments = text_df %>%
+  anti_join(stop_words)
+head(tidy_comments)
+```
+
+## Sentiment Analysis:
+```{r sentiment_analysis}
+get_sentiments("bing")
+
+comment_sentiments = tidy_comments %>%
+  inner_join(get_sentiments("bing"))
+glimpse(comment_sentiments)
+head(comment_sentiments,20)
+
+comment_sentiments = comment_sentiments %>%
+  mutate(index = comment_number %/% 15)
+head(comment_sentiments,30)
+
+comment_sentiments = comment_sentiments %>%
+  count(index, sentiment)
+head(comment_sentiments,30)
+
+comment_sentiment_wider = comment_sentiments %>%
+  pivot_wider(names_from = "sentiment", values_from = "n") %>%
+  mutate(across(everything(), replace_na, 0))
+head(comment_sentiment_wider, 15)
+
+comment_sentiment_wider <- comment_sentiment_wider %>%
+  mutate(sentiment = positive - negative)
+head(comment_sentiment_wider, 15)
+
+comment_sentiment_wider_final = comment_sentiment_wider %>%
+  mutate(Sentiment_Category = ifelse(sentiment > 0, "Positive", ifelse(sentiment < 0, "Negative", "Neutral")))
+sample_n(comment_sentiment_wider_final,10)
+```
+
+## Plot of Sentiment Analysis:
+```{r sentiment_analysis_plot}
+plot1 = ggplot(comment_sentiment_wider_final, aes(x= Sentiment_Category, fill = Sentiment_Category)) + geom_bar()
+plot1
+
+# Plotting the change of sentiments over comments:
+plot2 = ggplot(comment_sentiment_wider, aes(index, sentiment)) + 
+  geom_bar(stat="identity", fill='lightblue') + 
+  geom_smooth()
+plot2
+```
+
+## Updated Word Cloud:
+```{r new_word_cloud}
+comment_sentiments_word_cloud <-  tidy_comments %>%
+  inner_join(get_sentiments("bing"))
+
+comment_sentiments_word_cloud_count <- comment_sentiments_word_cloud %>%
+  group_by(word) %>% arrange(word) %>% select(c(4))
+unique(comment_sentiments_word_cloud_count)
+
+word_freq <- comment_sentiments_word_cloud_count %>% 
+  dplyr::summarise(Freq = n())
+word_freq %>% arrange(-Freq)
+
+word_cloud_plot <- wordcloud(words = word_freq$word, freq = word_freq$Freq, min.freq = 1, max.words=200, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+word_cloud_plot
+```
+
+## Creating a DTM:
+```{r dtm}
+myCorpus = Corpus(VectorSource(df2$textDisplay))
+mydtm = DocumentTermMatrix(myCorpus)
+inspect(mydtm)
+row_sum = apply(mydtm, 1, FUN = sum)
+mydtm=mydtm[row_sum!=0,]
+```
+
+## LDA VEM:
+```{r LDA_VEM}
+mydtm_lda_vem = LDA(mydtm, k = 2)
+mydtm_tidy_vem = tidy(mydtm_lda_vem)
+mydtm_tidy_vem = rename(mydtm_tidy_vem, word = term)
+mydtm_tidy_vem = mydtm_tidy_vem %>%
+  anti_join(stop_words)
+mydtm_tidy_vem = rename(mydtm_tidy_vem, term = word)
+
+mydtm_tidy_vem %>% filter(topic==1) %>%
+  mutate(beta_rank = min_rank(desc(beta))) %>% arrange(beta_rank) %>% head(10)
+
+mydtm_tidy_vem %>% filter(topic==2) %>%
+  mutate(beta_rank = min_rank(desc(beta))) %>% arrange(beta_rank) %>% head(10)
+
+mydtm_tidy_vem %>% filter(topic==1) %>%
+  mutate(beta_rank = min_rank(desc(beta))) %>%
+  arrange(beta_rank) %>%
+  head(10) %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(beta, term)) +
+  geom_col(show.legend = FALSE, fill = 'green')
+
+mydtm_tidy_vem %>% filter(topic==2) %>%
+  mutate(beta_rank = min_rank(desc(beta)))%>%
+  arrange(beta_rank) %>%
+  head(10) %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(beta, term)) +
+  geom_col(show.legend = FALSE, fill = 'yellow')
+```
+
+## LDA Gibbs:
+```{r LDA_GIBBS}
+mydtm_lda_gibbs = LDA(mydtm, k = 2, method = 'Gibbs')
+mydtm_tidy_gibbs = tidy(mydtm_lda_gibbs)
+mydtm_tidy_gibbs = rename(mydtm_tidy_gibbs, word = term)
+mydtm_tidy_gibbs = mydtm_tidy_gibbs %>%
+  anti_join(stop_words)
+mydtm_tidy_gibbs = rename(mydtm_tidy_gibbs, term = word)
+
+mydtm_tidy_gibbs %>% filter(topic==1) %>%
+  mutate(beta_rank = min_rank(desc(beta))) %>% arrange(beta_rank) %>% head(10)
+
+mydtm_tidy_gibbs %>% filter(topic==2) %>%
+  mutate(beta_rank = min_rank(desc(beta))) %>% arrange(beta_rank) %>% head(10)
+
+mydtm_tidy_gibbs %>% filter(topic==1) %>%
+  mutate(beta_rank = min_rank(desc(beta)))%>%
+  arrange(beta_rank) %>%
+  head(10) %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(beta, term)) +
+  geom_col(show.legend = FALSE, fill = 'orange')
+
+mydtm_tidy_gibbs %>% filter(topic==2) %>%
+  mutate(beta_rank = min_rank(desc(beta)))%>%
+  arrange(beta_rank) %>%
+  head(10) %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(beta, term)) +
+  geom_col(show.legend = FALSE, fill = 'blue')
+```
