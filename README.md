@@ -12,8 +12,8 @@ Scraping the data from different genre of YouTube comment sections and append it
 ## Procedure
 1. Started by scraping data from YouTube comments of different genres.
 2. Used different methodologies to clean the data, for instance using regex to find specific patterns, removing stop words.
-3. Use Data Visualizations to show different graphs and charts.
-4. Will then compare both methods of LDA (VEM and Gibbs) and try to compare each model with different ‘k’ values.
+3. Used Data Visualizations to show different graphs and charts.
+4. Compared both methods of LDA (VEM and Gibbs) and tried to compare each model with different ‘k’ values.
 5. Try to find/guess topics from the model created above.
-6. Give out the sentiment score of each video.
-7. Colour grading will be established on public sentiments.
+6. Gave out the sentiment score of each video.
+7. Colour grading established on public sentiments.
